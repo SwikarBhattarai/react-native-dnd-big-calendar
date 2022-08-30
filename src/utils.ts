@@ -1,0 +1,286 @@
+import dayjs from 'dayjs'
+import React from 'react'
+import { TextStyle, ViewStyle } from 'react-native'
+
+import { OVERLAP_PADDING } from './commonStyles'
+import { ICalendarEventBase, Mode, WeekNum } from './interfaces'
+import { Palette } from './theme/ThemeInterface'
+
+export const typedMemo: <T>(c: T) => T = React.memo
+
+export const DAY_MINUTES = 1440
+
+export function getDatesInMonth(date: Date | dayjs.Dayjs = new Date(), locale = 'en') {
+  const subject = dayjs(date)
+  const days = Array(subject.daysInMonth() - 1)
+    .fill(0)
+    .map((_, i) => {
+      return subject.date(i + 1).locale(locale)
+    })
+  return days
+}
+
+export function getDatesInWeek(
+  date: Date | dayjs.Dayjs = new Date(),
+  weekStartsOn: WeekNum = 0,
+  locale = 'en',
+) {
+  const subject = dayjs(date)
+  const subjectDOW = subject.day()
+  const days = Array(7)
+    .fill(0)
+    .map((_, i) => {
+      return subject
+        .add(i - (subjectDOW < weekStartsOn ? 7 + subjectDOW : subjectDOW) + weekStartsOn, 'day')
+        .locale(locale)
+    })
+  return days
+}
+
+export function getDatesInNextThreeDays(date: Date | dayjs.Dayjs = new Date(), locale = 'en') {
+  const subject = dayjs(date).locale(locale)
+  const days = Array(3)
+    .fill(0)
+    .map((_, i) => {
+      return subject.add(i, 'day')
+    })
+  return days
+}
+
+export function getDatesInNextOneDay(date: Date | dayjs.Dayjs = new Date(), locale = 'en') {
+  const subject = dayjs(date).locale(locale)
+  const days = Array(1)
+    .fill(0)
+    .map((_, i) => {
+      return subject.add(i, 'day')
+    })
+  return days
+}
+
+export const hours = [
+  0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10, 10.5, 11,
+  11.5, 12, 12.5, 13, 13.5, 14, 14.5, 15, 15.5, 16, 16.5, 17, 17.5, 18, 18.5, 19, 19.5, 20, 20.5,
+  21, 21.5, 22, 22.5, 23, 23.5,
+]
+
+export function formatHour(hour: number, ampm = false) {
+  if (ampm) {
+    if (hour === 0) {
+      return ''
+    }
+    if (hour === 12) {
+      return `12:${hour % 1 ? '30' : '00'} PM`
+    }
+    if (hour > 12) {
+      return `${~~hour - 12}:${hour % 1 ? '30' : '00'} PM`
+    }
+    return `${~~hour}:${hour % 1 ? '30' : '00'} AM`
+  }
+  return `${~~hour}:${hour % 1 ? '30' : '00'}`
+}
+
+export function isToday(date: dayjs.Dayjs) {
+  const today = dayjs()
+  return today.isSame(date, 'day')
+}
+
+export function getRelativeTopInDay(date: dayjs.Dayjs) {
+  return (100 * (date.hour() * 60 + date.minute())) / DAY_MINUTES
+}
+
+export function todayInMinutes() {
+  const today = dayjs()
+  return today.diff(dayjs().startOf('day'), 'minute')
+}
+
+export function modeToNum(mode: Mode, current?: dayjs.Dayjs | Date): number {
+  if (mode === 'month') {
+    if (!current) {
+      throw new Error('You must specify current date if mode is month')
+    }
+    if (current instanceof Date) {
+      current = dayjs(current)
+    }
+    return current.daysInMonth() - current.date() + 1
+  }
+  switch (mode) {
+    case 'day':
+      return 1
+    case '3days':
+      return 3
+    case 'week':
+    case 'custom':
+      return 7
+    default:
+      throw new Error('undefined mode')
+  }
+}
+
+export function formatStartEnd(start: Date, end: Date, format: string) {
+  return `${dayjs(start).format(format)} - ${dayjs(end).format(format)}`
+}
+
+export function isAllDayEvent(start: Date, end: Date) {
+  const _start = dayjs(start)
+  const _end = dayjs(end)
+
+  return _start.hour() === 0 && _start.minute() === 0 && _end.hour() === 0 && _end.minute() === 0
+}
+
+export function getCountOfEventsAtEvent(
+  event: ICalendarEventBase,
+  eventList: ICalendarEventBase[],
+) {
+  return eventList.filter(
+    (e) =>
+      dayjs(event.start).isBetween(e.start, e.end, 'minute', '[)') ||
+      dayjs(e.start).isBetween(event.start, event.end, 'minute', '[)'),
+  ).length
+}
+
+export function getOrderOfEvent(event: ICalendarEventBase, eventList: ICalendarEventBase[]) {
+  const events = eventList
+    .filter(
+      (e) =>
+        dayjs(event.start).isBetween(e.start, e.end, 'minute', '[)') ||
+        dayjs(e.start).isBetween(event.start, event.end, 'minute', '[)'),
+    )
+    .sort((a, b) => {
+      if (dayjs(a.start).isSame(b.start)) {
+        return dayjs(a.start).diff(a.end) < dayjs(b.start).diff(b.end) ? -1 : 1
+      } else {
+        return dayjs(a.start).isBefore(b.start) ? -1 : 1
+      }
+    })
+  const index = events.indexOf(event)
+  return index === -1 ? 0 : index
+}
+
+export function getStyleForOverlappingEvent(
+  eventPosition: number,
+  overlapOffset: number,
+  palettes: Palette[],
+  customEvent: boolean = false,
+) {
+  let overlapStyle = {}
+  const offset = overlapOffset
+  const start = eventPosition * offset
+  const zIndex = 100 + eventPosition
+  const bgColors = palettes.map((p) => p.main)
+  overlapStyle = {
+    start: start + OVERLAP_PADDING,
+    end: OVERLAP_PADDING,
+    backgroundColor: customEvent
+      ? 'transparent'
+      : bgColors[eventPosition % bgColors.length] || bgColors[0],
+    zIndex,
+  }
+  return overlapStyle
+}
+
+export function getDatesInNextCustomDays(
+  date: Date | dayjs.Dayjs = new Date(),
+  weekStartsOn: WeekNum = 0,
+  weekEndsOn: WeekNum = 6,
+  locale = 'en',
+) {
+  const subject = dayjs(date)
+  const subjectDOW = subject.day()
+  const days = Array(weekDaysCount(weekStartsOn, weekEndsOn))
+    .fill(0)
+    .map((_, i) => {
+      return subject.add(i - subjectDOW + weekStartsOn, 'day').locale(locale)
+    })
+  return days
+}
+
+// TODO: This method should be unit-tested
+function weekDaysCount(weekStartsOn: WeekNum, weekEndsOn: WeekNum) {
+  // handle reverse week
+  if (weekEndsOn < weekStartsOn) {
+    let daysCount = 1
+    let i = weekStartsOn
+    while (i !== weekEndsOn) {
+      ++i
+      ++daysCount
+      if (i > 6) {
+        i = 0
+      }
+      // fallback for infinite
+      if (daysCount > 7) {
+        break
+      }
+    }
+    return daysCount
+  }
+  // normal week
+  if (weekEndsOn > weekStartsOn) {
+    return weekEndsOn - weekStartsOn + 1
+  }
+  // default
+  return 1
+}
+
+export function getEventSpanningInfo(
+  event: ICalendarEventBase,
+  date: dayjs.Dayjs,
+  dayOfTheWeek: number,
+  calendarWidth: number,
+) {
+  const dayWidth = calendarWidth / 7
+
+  // adding + 1 because durations start at 0
+  const eventDuration = dayjs.duration(dayjs(event.end).diff(dayjs(event.start))).days() + 1
+  const eventDaysLeft = dayjs.duration(dayjs(event.end).diff(date)).days() + 1
+  const weekDaysLeft = 7 - dayOfTheWeek
+  const isMultipleDays = eventDuration > 1
+  // This is to determine how many days from the event to show during a week
+  const eventWeekDuration =
+    eventDuration > weekDaysLeft
+      ? weekDaysLeft
+      : dayOfTheWeek === 0 && eventDaysLeft < eventDuration
+      ? eventDaysLeft
+      : eventDuration
+  const isMultipleDaysStart =
+    isMultipleDays &&
+    (date.isSame(event.start, 'day') ||
+      (dayOfTheWeek === 0 && date.isAfter(event.start)) ||
+      date.get('date') === 1)
+  // - 6 to take in account the padding
+  const eventWidth = dayWidth * eventWeekDuration - 6
+
+  return { eventWidth, isMultipleDays, isMultipleDaysStart, eventWeekDuration }
+}
+
+export function objHasContent(obj: ViewStyle | TextStyle): boolean {
+  return !!Object.keys(obj).length
+}
+
+export function stringHasContent(string: string): boolean {
+  return !!string.length
+}
+
+export function calculatePrecision(precision: 'low' | 'medium' | 'high') {
+  switch (precision) {
+    case 'low':
+      return {
+        precision: 2,
+        squareUnits: 2,
+      }
+    case 'medium':
+      return {
+        precision: 1,
+        squareUnits: 4,
+      }
+    case 'high':
+      return {
+        precision: 0.5,
+        squareUnits: 8,
+      }
+    default:
+      return {
+        precision: 2,
+        squareUnits: 2,
+      }
+  }
+}
